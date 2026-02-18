@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: sans-serif; padding: 16px; background: #f5f5f5; color: #333; line-height: 1.4; }
+    h2 { font-size: 17px; margin: 0 0 16px 0; color: #222; font-weight: 600; }
+
+    label { font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px; color: #444; }
+    .field { margin-bottom: 16px; }
+    .field:last-of-type { margin-bottom: 0; }
+
+    textarea { width: 100%; height: 82px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; font-size: 13px; box-sizing: border-box; resize: vertical; }
+    select, input[type="text"], input[type="password"] { width: 100%; padding: 9px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; box-sizing: border-box; }
+
+    .control-group { background: #fff; padding: 14px; border: 1px solid #e2e2e2; border-radius: 8px; margin-bottom: 16px; }
+    .control-group label { margin-top: 0; }
+    .control-group label:not(:first-child) { margin-top: 12px; }
+    .control-group select { margin-top: 0; }
+    .checkbox-wrapper { display: flex; align-items: center; margin-top: 12px; font-size: 13px; color: #555; }
+    .checkbox-wrapper input { width: auto; margin-right: 8px; }
+
+    .row { display: flex; gap: 12px; margin-bottom: 16px; }
+    .row .field { flex: 1; margin-bottom: 0; }
+
+    button { width: 100%; padding: 11px; background: #007bff; color: white; border: none; border-radius: 6px; margin-top: 4px; cursor: pointer; font-weight: 600; font-size: 14px; }
+    button:hover { background: #0056b3; }
+    #clearContextBtn { background: #6c757d; margin-top: 10px; }
+    #clearContextBtn:hover { background: #5a6268; }
+
+    #settingsSection { background: #eee; padding: 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+    .settings-header { margin-bottom: 12px; }
+    .settings-toggle { font-size: 13px; color: #007bff; background: none; border: none; padding: 4px 0; cursor: pointer; text-decoration: none; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; }
+    .settings-toggle:hover { text-decoration: underline; }
+
+    #output { margin-top: 20px; display: none; }
+    #output.loading { display: block; color: #666; font-style: italic; }
+    .output-section { margin-bottom: 18px; }
+    .output-section h3 { font-size: 13px; margin: 0 0 8px 0; color: #333; font-weight: 600; }
+    .output-box { white-space: pre-wrap; font-size: 13px; color: #333; background: #fff; padding: 12px; border: 1px solid #ddd; border-radius: 6px; margin-top: 6px; font-family: inherit; }
+    .output-box.email { border-left: 4px solid #007bff; }
+    .copy-btn { width: auto; padding: 6px 12px; margin-top: 8px; font-size: 12px; background: #28a745; border: none; color: white; border-radius: 4px; cursor: pointer; }
+    .copy-btn:hover { background: #218838; }
+    .copy-btn.copied { background: #6c757d; }
+  </style>
+</head>
+<body>
+
+  <div class="settings-header">
+    <button type="button" id="toggleSettings" class="settings-toggle" aria-label="Open settings">&#9881; Settings</button>
+  </div>
+  <div id="settingsSection" class="field">
+    <label>Gemini API Key:</label>
+    <input type="password" id="apiKey" placeholder="AIza...">
+    <label style="margin-top: 12px;">Google Search Engine ID (CX):</label>
+    <input type="text" id="searchCx" placeholder="0123456789...">
+    <div style="font-size: 11px; color: #666; margin-top: 4px;">Required for "Search Docs" feature.</div>
+    <button id="saveSettings" style="margin-top: 12px; padding: 8px; background: #444;">Save Settings</button>
+  </div>
+
+  <h2>Support Assistant</h2>
+
+  <div class="field">
+    <label>Product</label>
+    <select id="product">
+      <option value="OptinMonster">OptinMonster</option>
+      <option value="TrustPulse">TrustPulse</option>
+      <option value="Beacon">Beacon</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label>Draft (Your rough notes or user email)</label>
+    <textarea id="draft" placeholder="Paste user email or your rough draft here..."></textarea>
+  </div>
+
+  <div class="field">
+    <label>Prompt (Extra context / keywords)</label>
+    <textarea id="prompt" placeholder="e.g. 'explain how to install pixel' (Used for search)"></textarea>
+  </div>
+
+  <div class="control-group">
+    <label>Goal</label>
+    <select id="goal">
+      <option value="Stop Churn">Stop Churn</option>
+      <option value="Explain Technical Issue">Explain Technical Issue</option>
+      <option value="Upselling">Upselling</option>
+      <option value="Account Issue">Account Issue</option>
+      <option value="Just Saying Thanks">Just Saying Thanks</option>
+      <option value="Reactivate Churned User">Reactivate Churned User</option>
+      <option value="Request Review">Request A Review / Feedback</option>
+      <option value="Close Sale">Close Sale</option>
+      <option value="Generic Information">Generic Information</option>
+    </select>
+
+    <div class="checkbox-wrapper">
+      <input type="checkbox" id="useSearch">
+      <span>Search Official Docs (uses "Prompt" text)</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Audience</label>
+      <select id="audience">
+        <option value="Frustrated Customer">Frustrated Customer</option>
+        <option value="Brand New User">Brand New User</option>
+        <option value="Pre-Sale Inquiry">Pre-Sale Inquiry</option>
+        <option value="VIP Client">VIP Client</option>
+        <option value="Churned Customer">Churned Customer</option>
+        <option value="Happy Customer">Happy Customer</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Tone</label>
+      <select id="tone">
+        <option value="Casual / Conversational">Casual / Conversational</option>
+        <option value="Strictly Professional">Strictly Professional</option>
+        <option value="Apologetic">Apologetic</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="generateBtn">&#10024; Generate Reply</button>
+  <button type="button" id="clearContextBtn">Clear context</button>
+
+  <div id="output"></div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

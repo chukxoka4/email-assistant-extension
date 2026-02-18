@@ -1,0 +1,28 @@
+# --- Never commit: API keys, tokens, PII ---
+.env
+.env.local
+.env.*.local
+secrets.env
+secrets.json
+*.secrets.*
+local-config.js
+local-config.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs / build
+*.log
+node_modules/
+
+# Optional: uncomment if you add a build step later
+# dist/
+# build/

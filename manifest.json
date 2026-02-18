@@ -1,0 +1,16 @@
+{
+    "manifest_version": 3,
+    "name": "Gemini Email Assistant",
+    "version": "1.0",
+    "description": "AI Email assistant using Gemini API",
+    "permissions": ["sidePanel", "contextMenus", "storage"],
+    "background": {
+      "service_worker": "background.js"
+    },
+    "side_panel": {
+      "default_path": "sidepanel.html"
+    },
+    "action": {
+      "default_title": "Open Assistant"
+    }
+  }
