@@ -14,13 +14,127 @@ const PRODUCTS = {
         site: "blog.beacon.by/docs"  // Check the actual docs URL for Beacon
     }
   };
-  
+
+  // --- MARKDOWN-LIKE TO HTML (for Summernote / rich text paste) ---
+  /**
+   * Escapes HTML so content is safe for insertion (no XSS).
+   */
+  function escapeHtml(text) {
+    if (text == null) return '';
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /**
+   * Applies inline formatting: *** → strong+em, ** → strong, * → em.
+   * Call on already-escaped text so we don't double-escape.
+   */
+  function applyInlineFormatting(escapedText) {
+    if (!escapedText) return '';
+    // Order matters: *** first, then **, then * (to avoid nesting issues)
+    return escapedText
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>');
+  }
+
+  /**
+   * Converts markdown-like plain text into semantic HTML (fragment only).
+   * Used before clipboard write and for display in the extension so Summernote
+   * and other rich editors receive formatted content. Does not double-convert
+   * if input is already HTML.
+   * @param {string} rawText - LLM output with * ** *** - 1. etc.
+   * @returns {string} HTML fragment (no document wrapper)
+   */
+  function formatEmailTextToHTML(rawText) {
+    if (rawText == null || typeof rawText !== 'string') return '';
+    const trimmed = rawText.trim();
+    if (!trimmed) return '';
+
+    // Already HTML: avoid double conversion (editor-safe fragment)
+    if (/<\/(?:p|ul|ol|li|strong|em|h[1-3]|br)\s*>/.test(trimmed) || /^\s*</.test(trimmed)) {
+      return trimmed;
+    }
+
+    const blocks = trimmed.split(/\n\n+/);
+    const out = [];
+
+    const unorderedMarker = /^[-*•]\s+/;
+    const orderedMarker = /^\d+\.\s+/;
+    const h1 = /^#\s+(.+)$/;
+    const h2 = /^##\s+(.+)$/;
+    const h3 = /^###\s+(.+)$/;
+
+    for (const block of blocks) {
+      const lines = block.split(/\n/).map(l => l.trim());
+      const nonEmpty = lines.filter(l => l.length > 0);
+      if (nonEmpty.length === 0) continue;
+
+      // Single line: check heading
+      if (nonEmpty.length === 1) {
+        const line = nonEmpty[0];
+        let m = line.match(h3);
+        if (m) { out.push('<h3>' + applyInlineFormatting(escapeHtml(m[1])) + '</h3>'); continue; }
+        m = line.match(h2);
+        if (m) { out.push('<h2>' + applyInlineFormatting(escapeHtml(m[1])) + '</h2>'); continue; }
+        m = line.match(h1);
+        if (m) { out.push('<h1>' + applyInlineFormatting(escapeHtml(m[1])) + '</h1>'); continue; }
+      }
+
+      // All lines unordered list?
+      if (nonEmpty.every(l => unorderedMarker.test(l))) {
+        const items = nonEmpty
+          .map(l => l.replace(unorderedMarker, ''))
+          .map(l => '<li>' + applyInlineFormatting(escapeHtml(l)) + '</li>')
+          .join('');
+        out.push('<ul>' + items + '</ul>');
+        continue;
+      }
+
+      // All lines ordered list?
+      if (nonEmpty.every(l => orderedMarker.test(l))) {
+        const items = nonEmpty
+          .map(l => l.replace(orderedMarker, ''))
+          .map(l => '<li>' + applyInlineFormatting(escapeHtml(l)) + '</li>')
+          .join('');
+        out.push('<ol>' + items + '</ol>');
+        continue;
+      }
+
+      // Paragraph: join with <br>, escape and inline-format
+      const paraContent = nonEmpty
+        .map(l => applyInlineFormatting(escapeHtml(l)))
+        .join('<br>');
+      out.push('<p>' + paraContent + '</p>');
+    }
+
+    // Merge consecutive same-type lists (e.g. two <ul> blocks → one <ul>)
+    const merged = [];
+    for (let i = 0; i < out.length; i++) {
+      const current = out[i];
+      const next = out[i + 1];
+      const isUl = /^<ul>/.test(current);
+      const isOl = /^<ol>/.test(current);
+      if (isUl && next && /^<ul>/.test(next)) {
+        merged.push(current.replace('</ul>', '') + next.replace(/^<ul>|<\/ul>$/g, '') + '</ul>');
+        i++;
+      } else if (isOl && next && /^<ol>/.test(next)) {
+        merged.push(current.replace('</ol>', '') + next.replace(/^<ol>|<\/ol>$/g, '') + '</ol>');
+        i++;
+      } else {
+        merged.push(current);
+      }
+    }
+    return merged.join('\n\n');
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     // Load settings
     chrome.storage.local.get(['geminiApiKey', 'searchCx', 'draftText', 'promptText'], (result) => {
       if (result.geminiApiKey) document.getElementById('apiKey').value = result.geminiApiKey;
       if (result.searchCx) document.getElementById('searchCx').value = result.searchCx;
-      
+
       if (result.draftText) {
         document.getElementById('draft').value = result.draftText;
         chrome.storage.local.remove('draftText');
@@ -63,7 +177,7 @@ const PRODUCTS = {
     document.getElementById('output').innerHTML = '';
     document.getElementById('output').style.display = 'none';
   });
-  
+
   // --- GOOGLE SEARCH FUNCTION ---
   async function searchDocs(query, apiKey, cx) {
     if (!query || !cx) return null;
@@ -222,18 +336,32 @@ const PRODUCTS = {
       const { reason, versionA, versionB } = parsed;
       let html = "";
       if (reason) html += `<div class="output-section"><h3><strong>Why</strong></h3><div class="output-box reason">${escapeHtml(reason)}</div></div>`;
-      if (versionA) html += `<div class="output-section"><h3><strong>Suggestion A</strong></h3><div class="output-box email" id="sa">${escapeHtml(versionA)}</div><button class="copy-btn" data-copy-target="sa">Copy</button></div>`;
-      if (versionB) html += `<div class="output-section"><h3><strong>Suggestion B</strong></h3><div class="output-box email" id="sb">${escapeHtml(versionB)}</div><button class="copy-btn" data-copy-target="sb">Copy</button></div>`;
+      // Email versions: show formatted HTML and store raw for clipboard (format applied on copy from same HTML)
+      if (versionA) html += `<div class="output-section"><h3><strong>Suggestion A</strong></h3><div class="output-box email" id="sa" data-raw="${escapeHtml(versionA).replace(/"/g, '&quot;')}">${formatEmailTextToHTML(versionA)}</div><button class="copy-btn" data-copy-target="sa">Copy</button></div>`;
+      if (versionB) html += `<div class="output-section"><h3><strong>Suggestion B</strong></h3><div class="output-box email" id="sb" data-raw="${escapeHtml(versionB).replace(/"/g, '&quot;')}">${formatEmailTextToHTML(versionB)}</div><button class="copy-btn" data-copy-target="sb">Copy</button></div>`;
       return html;
   }
-  
-  function escapeHtml(text) { const div = document.createElement("div"); div.textContent = text; return div.innerHTML; }
-  
+
+  // Copy: write HTML (for Summernote) and plain text (fallback). Formatting applied before clipboard write.
   document.getElementById("output").addEventListener("click", async (e) => {
       const btn = e.target.closest(".copy-btn");
       if (!btn) return;
       const el = document.getElementById(btn.getAttribute("data-copy-target"));
-      if (el) await navigator.clipboard.writeText(el.textContent.trim());
+      if (!el) return;
+      // data-raw holds original markdown-like text (browser decodes attribute); use for HTML conversion
+      const rawText = el.getAttribute("data-raw") ?? el.textContent.trim();
+      const htmlFragment = formatEmailTextToHTML(rawText);
+      const plainText = el.textContent.trim();
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([htmlFragment], { type: 'text/html' }),
+            'text/plain': new Blob([plainText], { type: 'text/plain' })
+          })
+        ]);
+      } catch (_) {
+        await navigator.clipboard.writeText(plainText);
+      }
       btn.textContent = "Copied!";
       setTimeout(() => btn.textContent = "Copy", 1500);
   });
