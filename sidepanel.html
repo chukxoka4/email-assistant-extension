@@ -38,7 +38,11 @@
     .output-section { margin-bottom: 18px; }
     .output-section h3 { font-size: 13px; margin: 0 0 8px 0; color: #333; font-weight: 600; }
     .output-box { white-space: pre-wrap; font-size: 13px; color: #333; background: #fff; padding: 12px; border: 1px solid #ddd; border-radius: 6px; margin-top: 6px; font-family: inherit; }
-    .output-box.email { border-left: 4px solid #007bff; }
+    .output-box.email { border-left: 4px solid #007bff; white-space: normal; }
+    .output-box.email p { margin: 0 0 0.75em 0; }
+    .output-box.email p:last-child { margin-bottom: 0; }
+    .output-box.email ul, .output-box.email ol { margin: 0.5em 0; padding-left: 1.25em; }
+    .output-box.email li { margin: 0.25em 0; }
     .copy-btn { width: auto; padding: 6px 12px; margin-top: 8px; font-size: 12px; background: #28a745; border: none; color: white; border-radius: 4px; cursor: pointer; }
     .copy-btn:hover { background: #218838; }
     .copy-btn.copied { background: #6c757d; }
