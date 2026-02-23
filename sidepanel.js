@@ -129,29 +129,89 @@ const PRODUCTS = {
     return merged.join('\n\n');
   }
 
+  // Insert incoming selection at cursor instead of replacing. Uses stored content + cursor when panel was closed.
+  function insertAtCursor(fieldId, newText, storedContent, cursorStart, cursorEnd) {
+    const el = document.getElementById(fieldId);
+    if (!el || newText == null) return;
+    const content = storedContent != null ? storedContent : el.value;
+    const start = cursorStart != null ? cursorStart : el.selectionStart;
+    const end = cursorEnd != null ? cursorEnd : el.selectionEnd;
+    const before = content.slice(0, start);
+    const after = content.slice(end);
+    const newContent = before + newText + after;
+    const newCursor = start + newText.length;
+    el.value = newContent;
+    el.setSelectionRange(newCursor, newCursor);
+    el.focus();
+    return { newContent, newCursor };
+  }
+
+  // Persist draft/prompt content and cursor on blur so context menu can insert at cursor from another tab
+  function persistDraftState() {
+    const d = document.getElementById('draft');
+    const p = document.getElementById('prompt');
+    chrome.storage.local.set({
+      draftContent: d.value,
+      lastDraftCursorStart: d.selectionStart,
+      lastDraftCursorEnd: d.selectionEnd
+    });
+  }
+  function persistPromptState() {
+    const p = document.getElementById('prompt');
+    chrome.storage.local.set({
+      promptContent: p.value,
+      lastPromptCursorStart: p.selectionStart,
+      lastPromptCursorEnd: p.selectionEnd
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
-    // Load settings
-    chrome.storage.local.get(['geminiApiKey', 'searchCx', 'draftText', 'promptText'], (result) => {
+    const draftEl = document.getElementById('draft');
+    const promptEl = document.getElementById('prompt');
+
+    // Load settings and any context from context menu (insert at cursor)
+    chrome.storage.local.get([
+      'geminiApiKey', 'searchCx',
+      'draftText', 'draftContent', 'lastDraftCursorStart', 'lastDraftCursorEnd',
+      'promptText', 'promptContent', 'lastPromptCursorStart', 'lastPromptCursorEnd'
+    ], (result) => {
       if (result.geminiApiKey) document.getElementById('apiKey').value = result.geminiApiKey;
       if (result.searchCx) document.getElementById('searchCx').value = result.searchCx;
 
-      if (result.draftText) {
-        document.getElementById('draft').value = result.draftText;
+      if (result.draftText !== undefined && result.draftText !== '') {
+        const content = result.draftContent ?? '';
+        const start = result.lastDraftCursorStart ?? 0;
+        const end = result.lastDraftCursorEnd ?? 0;
+        const { newContent, newCursor } = insertAtCursor('draft', result.draftText, content, start, end) || {};
+        if (newContent != null) {
+          chrome.storage.local.set({ draftContent: newContent, lastDraftCursorStart: newCursor, lastDraftCursorEnd: newCursor });
+        }
         chrome.storage.local.remove('draftText');
+      } else if (result.draftContent !== undefined) {
+        draftEl.value = result.draftContent;
       }
-      if (result.promptText) {
-        document.getElementById('prompt').value = result.promptText;
+
+      if (result.promptText !== undefined && result.promptText !== '') {
+        const content = result.promptContent ?? '';
+        const start = result.lastPromptCursorStart ?? 0;
+        const end = result.lastPromptCursorEnd ?? 0;
+        const { newContent, newCursor } = insertAtCursor('prompt', result.promptText, content, start, end) || {};
+        if (newContent != null) {
+          chrome.storage.local.set({ promptContent: newContent, lastPromptCursorStart: newCursor, lastPromptCursorEnd: newCursor });
+        }
         chrome.storage.local.remove('promptText');
+      } else if (result.promptContent !== undefined) {
+        promptEl.value = result.promptContent;
       }
     });
   });
-  
+
   // Settings Toggle
   document.getElementById('toggleSettings').addEventListener('click', () => {
     const settings = document.getElementById('settingsSection');
     settings.style.display = settings.style.display === 'none' ? 'block' : 'none';
   });
-  
+
   // Save Settings
   document.getElementById('saveSettings').addEventListener('click', () => {
     const apiKey = document.getElementById('apiKey').value;
@@ -161,21 +221,50 @@ const PRODUCTS = {
       alert('Settings Saved!');
     });
   });
-  
-  // Context Menu Target Logic
+
+  // Context Menu Target: which field gets the next paste (draft vs prompt)
   document.getElementById('draft').addEventListener('focus', () => chrome.storage.local.set({ lastRightClickTarget: 'draft' }));
   document.getElementById('prompt').addEventListener('focus', () => chrome.storage.local.set({ lastRightClickTarget: 'prompt' }));
-  
+
+  // Persist content and cursor when leaving the field so context menu inserts at the right place
+  document.getElementById('draft').addEventListener('blur', persistDraftState);
+  document.getElementById('prompt').addEventListener('blur', persistPromptState);
+
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes.draftText?.newValue) document.getElementById('draft').value = changes.draftText.newValue;
-    if (changes.promptText?.newValue) document.getElementById('prompt').value = changes.promptText.newValue;
+    const draftEl = document.getElementById('draft');
+    const promptEl = document.getElementById('prompt');
+    if (changes.draftText?.newValue !== undefined) {
+      chrome.storage.local.get(['draftContent', 'lastDraftCursorStart', 'lastDraftCursorEnd'], (r) => {
+        const content = r.draftContent ?? draftEl.value;
+        const start = r.lastDraftCursorStart ?? draftEl.selectionStart;
+        const end = r.lastDraftCursorEnd ?? draftEl.selectionEnd;
+        const { newContent, newCursor } = insertAtCursor('draft', changes.draftText.newValue, content, start, end) || {};
+        if (newContent != null) {
+          chrome.storage.local.set({ draftContent: newContent, lastDraftCursorStart: newCursor, lastDraftCursorEnd: newCursor });
+        }
+        chrome.storage.local.remove('draftText');
+      });
+    }
+    if (changes.promptText?.newValue !== undefined) {
+      chrome.storage.local.get(['promptContent', 'lastPromptCursorStart', 'lastPromptCursorEnd'], (r) => {
+        const content = r.promptContent ?? promptEl.value;
+        const start = r.lastPromptCursorStart ?? promptEl.selectionStart;
+        const end = r.lastPromptCursorEnd ?? promptEl.selectionEnd;
+        const { newContent, newCursor } = insertAtCursor('prompt', changes.promptText.newValue, content, start, end) || {};
+        if (newContent != null) {
+          chrome.storage.local.set({ promptContent: newContent, lastPromptCursorStart: newCursor, lastPromptCursorEnd: newCursor });
+        }
+        chrome.storage.local.remove('promptText');
+      });
+    }
   });
-  
+
   document.getElementById('clearContextBtn').addEventListener('click', () => {
     document.getElementById('draft').value = '';
     document.getElementById('prompt').value = '';
     document.getElementById('output').innerHTML = '';
     document.getElementById('output').style.display = 'none';
+    chrome.storage.local.remove(['draftContent', 'lastDraftCursorStart', 'lastDraftCursorEnd', 'promptContent', 'lastPromptCursorStart', 'lastPromptCursorEnd']);
   });
 
   // --- GOOGLE SEARCH FUNCTION ---
